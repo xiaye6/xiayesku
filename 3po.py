@@ -2,7 +2,7 @@ from pagermaid.listener import listener
 from pagermaid.enums import Client, Message
 from pyrogram.raw.functions.messages import GetDialogs
 from pyrogram.raw.types import InputPeerEmpty
-from pyrogram import types, utils
+from pyrogram import utils
 
 @listener(
     command="po",
@@ -14,7 +14,7 @@ async def delete_archived_chats(client: Client, message: Message):
     success_count = 0
     failed = []
 
-    offset_date = 0
+    offset_date = None
     offset_id = 0
     offset_peer = InputPeerEmpty()
     limit = 100
@@ -51,10 +51,9 @@ async def delete_archived_chats(client: Client, message: Message):
                     failed.append(str(chat_id))
                 continue
 
-        # 更新偏移量以获取下一批对话
         last_message = result.messages[-1]
         offset_id = last_message.id
-        offset_date = utils.datetime_to_timestamp(last_message.date)
+        offset_date = last_message.date  # 正确使用 datetime 对象
         offset_peer = peer
 
     result_text = f"已成功清理 {success_count} 个对话。"
