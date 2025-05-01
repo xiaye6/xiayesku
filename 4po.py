@@ -43,6 +43,12 @@ async def delete_archived_chats(client: Client, message: Message):
                 chat_id = utils.get_peer_id(peer)
                 await client.delete_dialog(chat_id)
                 success_count += 1
+
+                # 更新 offset_* 值为最后成功的对话
+                offset_peer = peer
+                offset_id = dialog.top_message
+                offset_date = next((m.date for m in result.messages if m.id == dialog.top_message), None)
+
             except Exception:
                 try:
                     chat = await client.get_chat(chat_id)
@@ -51,10 +57,8 @@ async def delete_archived_chats(client: Client, message: Message):
                     failed.append(str(chat_id))
                 continue
 
-        last_message = result.messages[-1]
-        offset_id = last_message.id
-        offset_date = last_message.date  # 正确使用 datetime 对象
-        offset_peer = peer
+        if not offset_peer or not offset_id or not offset_date:
+            break
 
     result_text = f"已成功清理 {success_count} 个对话。"
     if failed:
