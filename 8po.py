@@ -1,14 +1,12 @@
 from pagermaid.listener import listener
 from pagermaid.enums import Client, Message
-from pyrogram.raw.types import InputUser
-import math
 
 @listener(
     command="sclxr",
-    description="删除当前账号的所有联系人（含数字进度条显示）",
+    description="删除当前账号的所有联系人，每 100 人向 @dongnot 发送进度。",
 )
 async def delete_all_contacts(client: Client, message: Message):
-    await message.edit("正在获取联系人列表...")
+    await message.edit("开始删除联系人...")
 
     try:
         contacts = await client.get_contacts()
@@ -26,12 +24,14 @@ async def delete_all_contacts(client: Client, message: Message):
             await client.delete_contacts(contact.id)
             deleted += 1
 
-            # 数字进度条
-            percent = int((deleted / total) * 100)
-            bar = "█" * (percent // 10) + "░" * (10 - percent // 10)
-            await message.edit(f"正在删除联系人：[{bar}] {percent}% ({deleted}/{total})")
-
+            # 每删除100人发送一次进度消息给 @dongnot
+            if deleted % 100 == 0 or deleted == total:
+                progress = f"已删除联系人：{deleted}/{total}"
+                try:
+                    await client.send_message("dongnot", progress)
+                except Exception:
+                    pass  # 如果不能发消息给对方则跳过
         except Exception:
-            continue  # 出错的跳过
+            continue  # 删除失败跳过
 
     await message.edit(f"联系人清理完成，共删除 {deleted} 个联系人。")
