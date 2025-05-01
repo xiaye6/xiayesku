@@ -6,7 +6,7 @@ from pyrogram import utils
 
 @listener(
     command="po",
-    description="删除当前账号归档中的所有对话（包括已注销的）",
+    description="删除当前账号归档中的所有对话（跳过已注销用户）",
 )
 async def delete_archived_chats(client: Client, message: Message):
     await message.edit("开始清理归档对话...")
@@ -28,7 +28,7 @@ async def delete_archived_chats(client: Client, message: Message):
                     offset_peer=offset_peer,
                     limit=limit,
                     hash=0,
-                    folder_id=1  # 获取归档对话
+                    folder_id=1  # 1 = 归档对话
                 )
             )
         except Exception as e:
@@ -38,29 +38,24 @@ async def delete_archived_chats(client: Client, message: Message):
             break
 
         for dialog in result.dialogs:
+            peer = dialog.peer
+            if peer is None:
+                continue  # 跳过已注销或损坏对话
+
             try:
-                peer = dialog.peer
                 chat_id = utils.get_peer_id(peer)
                 await client.delete_dialog(chat_id)
                 success_count += 1
 
-                # 更新 offset_* 值为最后成功的对话
-                offset_peer = peer
+                # 更新偏移数据
+                chat = await client.get_chat(chat_id)
+                offset_peer = await utils.get_input_peer(chat)
                 offset_id = dialog.top_message
-                offset_date = next((m.date for m in result.messages if m.id == dialog.top_message), None)
-
+                offset_date = next(
+                    (m.date for m in result.messages if m.id == dialog.top_message), None
+                )
             except Exception:
-                try:
-                    chat = await client.get_chat(chat_id)
-                    failed.append(chat.title or str(chat.id))
-                except Exception:
-                    failed.append(str(chat_id))
-                continue
+                continue  # 跳过不能删除的对话
 
-        if not offset_peer or not offset_id or not offset_date:
-            break
-
-    result_text = f"已成功清理 {success_count} 个对话。"
-    if failed:
-        result_text += f"\n以下对话跳过：{', '.join(failed)}"
+    result_text = f"已成功清理 {success_count} 个对话（跳过已注销用户）。"
     await message.edit(result_text)
