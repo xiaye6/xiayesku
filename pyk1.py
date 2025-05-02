@@ -9,14 +9,16 @@ from pagermaid.utils import safe_remove
 @listener(
     command="pyk",
     need_admin=True,
-    description="将跟随命令的 Python 代码写入 .py 文件并发回"
+    description="将跟随命令的 Python 代码写入 .py 文件并发送回对话"
 )
 async def pyk_generate_python_file(message: Message):
-    code = message.raw_text.split("\n", 1)
-    if len(code) < 2 or not code[1].strip():
-        return await message.edit("请在 `.pyk` 命令下方粘贴 Python 代码。")
+    full_text = message.text or ""
+    lines = full_text.split("\n", 1)
 
-    code_text = code[1]
+    if len(lines) < 2 or not lines[1].strip():
+        return await message.edit("请在 `.pyk` 命令下一行粘贴 Python 代码。")
+
+    code_text = lines[1]
     filename = "code_output.py"
 
     try:
@@ -37,4 +39,4 @@ async def pyk_generate_python_file(message: Message):
     finally:
         safe_remove(filename)
 
-    await message.edit("代码已打包为 .py 文件并发送。")
+    await message.edit("Python 文件已发送。")
