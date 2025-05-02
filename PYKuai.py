@@ -1,4 +1,3 @@
-import os
 import re
 
 from pagermaid.listener import listener
@@ -10,24 +9,19 @@ from pagermaid.utils import safe_remove
 @listener(
     command="pyk",
     need_admin=True,
-    description="发送 .pyk 命令，下一行指定文件名，再下一行开始写 Python 代码。\n格式如下：\n.pyk\ntext.py\nprint(\"hello world\")"
+    description="生成 Python 文件（格式：`.pyk 文件名.py 代码内容`）\n例如：`.pyk test.py print(\"hello\")`"
 )
 async def pyk_generate_python_file(message: Message):
     full_text = message.text or ""
-    lines = full_text.strip().split("\n")
+    parts = full_text.strip().split(maxsplit=2)
 
-    if len(lines) < 3:
-        return await message.edit("格式错误：请提供文件名和 Python 代码。\n例如：\n.pyk\ntext.py\nprint(\"hello\")")
+    if len(parts) < 3:
+        return await message.edit("格式错误：请使用 `.pyk 文件名.py 代码内容` 的格式。")
 
-    filename = lines[1].strip()
+    _, filename, code_text = parts
 
     if not re.match(r"^[\w\-]+\.py$", filename):
-        return await message.edit("非法文件名。请使用如 `my_script.py` 格式的合法名称。")
-
-    code_text = "\n".join(lines[2:]).strip()
-
-    if not code_text:
-        return await message.edit("请提供 Python 代码内容。")
+        return await message.edit("非法文件名。请使用合法格式如 `script.py`。")
 
     try:
         with open(filename, "w", encoding="utf-8") as f:
