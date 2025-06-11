@@ -72,32 +72,65 @@ async def get_feedback_group(pool):
             row = await cursor.fetchone()
             return row[0] if row else None
 
-# 频道消息转发处理
+# 新增：删除无效群组的函数
+async def remove_invalid_groups(pool, group_ids):
+    if not group_ids:
+        return
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            placeholders = ", ".join(["%s"] * len(group_ids))
+            query = f"DELETE FROM groups WHERE chat_id IN ({placeholders})"
+            await cursor.execute(query, group_ids)
+            await conn.commit()
+    logging.info(f"已删除 {len(group_ids)} 个无效群组: {group_ids}")
+
+# 频道消息转发处理（修改后）
 async def channel_post_handler(update: Update, context: CallbackContext):
+    from telegram.error import BadRequest
+    
     if update.channel_post and update.channel_post.chat.id == TARGET_CHANNEL_ID:
         pool = context.bot_data["db_pool"]
         groups = await get_all_groups(pool)
         success_count = 0
         failure_count = 0
+        invalid_groups = []  # 记录无效群组ID
 
         for group_id in groups:
             try:
+                # 先检查机器人是否在群内
+                await context.bot.get_chat_member(chat_id=group_id, user_id=context.bot.id)
                 await context.bot.forward_message(
                     chat_id=group_id,
-                    from_chat_id=update.channel_post.chat_id,
+                    from_chat_id=update.channel_post.chat.id,
                     message_id=update.channel_post.message_id
                 )
                 success_count += 1
-            except Exception as e:
-                logging.error("转发失败: 群 %s - %s", group_id, e)
+            except BadRequest as e:
+                error_msg = f"转发失败: 群 {group_id} - {e}"
+                logging.error(error_msg)
                 failure_count += 1
-
+                
+                # 判断失效原因并记录无效群组
+                if "bot was kicked" in str(e) or "Chat not found" in str(e):
+                    invalid_groups.append(group_id)
+                    error_detail = f"【群组失效】群ID: {group_id}，错误: {e}"
+                    logging.error(error_detail)
+        
+        # 批量删除无效群组
+        if invalid_groups:
+            await remove_invalid_groups(pool, invalid_groups)
+        
+        # 发送反馈（包含失效群组信息）
         forward_link = f"https://t.me/{update.channel_post.chat.username}/{update.channel_post.message_id}" if update.channel_post.chat.username else "无链接"
         feedback_group = await get_feedback_group(pool)
         if feedback_group:
             summary = (
-                f"转发成功！\n转发链接：{forward_link}\n"
-                f"总群数：{len(groups)}\n成功：{success_count}\n失败：{failure_count}"
+                f"转发结果：\n"
+                f"转发链接：{forward_link}\n"
+                f"总群数：{len(groups)}\n"
+                f"成功：{success_count}\n"
+                f"失败：{failure_count}\n"
+                f"无效群组：{invalid_groups}"
             )
             try:
                 await context.bot.send_message(chat_id=feedback_group, text=summary)
@@ -112,10 +145,38 @@ async def my_chat_member_handler(update: Update, context: CallbackContext):
         pool = context.bot_data["db_pool"]
         await add_group(pool, chat.id)
 
-# start 命令
+# start 命令（修改后）
 async def start_handler(update: Update, context: CallbackContext):
     if update.message and update.message.chat.type == 'private':
-        await update.message.reply_text("欢迎使用机器人，发送 /addgroup <群组ID> 可添加转发群。")
+        reply_text = """
+感谢您选择永盛担保！
+
+永盛一组担保负责人: @ysdb 
+永盛二组担保负责人: @zizi
+
+永盛一组纠纷客服： @huya
+永盛二组纠纷客服： @ssff
+
+永盛一组广告客服： @bros
+永盛二组广告客服： @rrrr6
+
+永盛一组公群频道： @ssll
+永盛二组公群频道： @oy333
+
+永盛一组供需频道：@ys333 
+永盛二组供需频道：@oy222
+
+永盛宣传客服： @xixi
+
+曝光中心： @ys555 
+
+——————————————————
+
+⚠️注意⚠️
+一组担保负责人（4字ID @ysdb）不在的公群都是假的
+二组担保负责人（4字ID @zizi）不在的公群都是假的
+"""
+        await update.message.reply_text(reply_text)
 
 # 管理员添加群组，带权限检查
 async def add_group_command(update: Update, context: CallbackContext):
